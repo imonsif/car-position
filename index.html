@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fil d'Ariane</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Fil d'Ariane">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#4c5c35">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;700&family=Source+Sans+3:wght@400;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<script src="vendor/leaflet/leaflet.js"></script>
+<style>
+#map{height:min(62vh,520px);border-radius:6px;border:1px solid var(--line);background:var(--bg);z-index:0}
+.carIcon{background:var(--ink);color:var(--panel);font:700 13px/20px var(--f-mono);text-align:center;border:2px solid var(--panel);border-radius:4px;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.leaflet-control-layers-base label{font-size:15px;padding:4px 2px}
+.leaflet-control-attribution{font-size:10px}
+/* Layout : une colonne pensée pour le pouce ; guidage en haut, carte de la trace, puis outils */
+:root{
+  --bg:#ecefe8; --panel:#f8f9f5; --ink:#1d241e; --muted:#5d6858; --line:#cdd3c6;
+  --olive:#4c5c35; --brass:#94661a; --brass-soft:#f1e3c4; --you:#2b6a8a; --alert:#a8402a; --alert-soft:#f6ddd5;
+  --f-display:"Saira Condensed","Arial Narrow",sans-serif;
+  --f-body:"Source Sans 3",-apple-system,"Segoe UI",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#151a16; --panel:#1d241f; --ink:#e4e8df; --muted:#9ba597; --line:#323c33;
+  --olive:#a3b97f; --brass:#e0ac52; --brass-soft:#3a2f1a; --you:#6fb6d8; --alert:#ef8a6f; --alert-soft:#3d221b; color-scheme:dark}}
+[hidden]{display:none!important}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:17px;line-height:1.45;
+  padding-top:max(14px,env(safe-area-inset-top,0px));padding-bottom:max(28px,env(safe-area-inset-bottom,0px));
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:560px;margin:0 auto;display:grid;gap:14px}
+header{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+h1{font-family:var(--f-display);font-weight:700;font-size:1.9rem;letter-spacing:.02em;margin:0;text-transform:uppercase;line-height:1}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-family:var(--f-mono);font-size:.75rem;border:1px solid var(--line);border-radius:999px;padding:3px 9px;color:var(--muted);background:var(--panel);white-space:nowrap}
+.chip.ok{color:var(--olive);border-color:var(--olive)}
+.chip.bad{color:var(--alert);border-color:var(--alert)}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;display:grid;gap:14px;min-width:0}
+.lbl{font-family:var(--f-display);text-transform:uppercase;letter-spacing:.08em;font-size:.85rem;color:var(--muted)}
+p{margin:0}
+.muted{color:var(--muted);font-size:.95rem}
+button{font:inherit;cursor:pointer;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:12px 14px;min-height:48px}
+button:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+button:disabled{opacity:.5;cursor:default}
+.primary{background:var(--olive);border-color:var(--olive);color:var(--panel);font-family:var(--f-display);font-weight:700;font-size:1.35rem;letter-spacing:.04em;text-transform:uppercase;min-height:64px;width:100%}
+.return{background:var(--brass);border-color:var(--brass);color:var(--panel)}
+.danger{color:var(--alert);border-color:var(--alert);background:transparent}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row>button{flex:1 1 140px}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.seg button[aria-pressed="true"]{background:var(--olive);border-color:var(--olive);color:var(--panel)}
+.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.stat{background:var(--panel);padding:10px 12px;display:grid;gap:2px;min-width:0}
+.stat b{font-family:var(--f-mono);font-weight:500;font-size:1.1rem;font-variant-numeric:tabular-nums}
+.stat span{font-size:.8rem;color:var(--muted)}
+.guide{display:grid;grid-template-columns:auto minmax(0,1fr);gap:16px;align-items:center}
+.rose{width:150px;height:150px}
+@media (max-width:380px){.rose{width:120px;height:120px}}
+.big{white-space:nowrap;font-family:var(--f-display);font-weight:700;font-size:clamp(2.4rem,11vw,3.4rem);line-height:.95;color:var(--brass);font-variant-numeric:tabular-nums}
+.say{font-size:1.2rem;font-weight:600}
+.notice{border-radius:6px;padding:10px 12px;font-size:.95rem;background:var(--brass-soft)}
+.notice.alert{background:var(--alert-soft);color:var(--ink)}
+.notice strong{color:var(--alert)}
+canvas{width:100%;display:block;border-radius:6px;background:var(--bg);border:1px solid var(--line);touch-action:none}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.82rem;color:var(--muted)}
+.legend i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:5px;border-radius:2px}
+.confirm{display:grid;gap:8px;border:1px dashed var(--alert);border-radius:6px;padding:12px}
+.coords{font-family:var(--f-mono);font-size:.85rem;word-break:break-all}
+@media (prefers-reduced-motion:no-preference){#needle{transition:transform .25s ease-out}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Fil d'Ariane</h1>
+    <div class="chips"><span class="chip" id="gpsChip">GPS inactif</span><span class="chip" id="wakeChip" hidden>Écran allumé</span></div>
+  </header>
+
+  <div class="notice alert" id="gapNotice" hidden></div>
+
+  <!-- Étape 1 : enregistrer la voiture -->
+  <section class="panel" id="vSetup">
+    <span class="lbl">Avant de partir</span>
+    <p>Place-toi à côté de la voiture, ciel dégagé, puis enregistre sa position. L'appli trace ensuite ton chemin pour pouvoir le refaire à l'envers.</p>
+    <button class="primary" id="btnCar">Enregistrer la voiture ici</button>
+    <p class="muted" id="calib" hidden></p>
+    <p class="muted">Chez toi, en wifi, utilise la carte ci-dessous pour parcourir ton secteur de chasse : elle restera disponible hors réseau.</p>
+  </section>
+
+  <!-- Étape 2 : en chasse -->
+  <section class="panel" id="vTrack" hidden>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap">
+      <span class="lbl" id="recLbl">Enregistrement en cours</span>
+      <span class="muted" id="carDir"></span>
+    </div>
+    <div class="stats">
+      <div class="stat"><b id="sCar">–</b><span>Voiture à vol d'oiseau</span></div>
+      <div class="stat"><b id="sWalk">–</b><span>Distance parcourue</span></div>
+      <div class="stat"><b id="sTime">–</b><span>Durée de la sortie</span></div>
+      <div class="stat"><b id="sAlt">–</b><span>Dénivelé par rapport à la voiture</span></div>
+    </div>
+    <button class="primary return" id="btnReturn">Revenir à la voiture</button>
+    <div class="row"><button id="btnPause">Mettre en pause</button></div>
+  </section>
+
+  <!-- Étape 3 : retour -->
+  <section class="panel" id="vReturn" hidden>
+    <span class="lbl">Retour à la voiture</span>
+    <div class="seg" id="modeSeg">
+      <button type="button" data-m="path">Par mon chemin</button>
+      <button type="button" data-m="direct">En ligne droite</button>
+    </div>
+    <div class="guide">
+      <svg class="rose" viewBox="-100 -100 200 200" role="img" aria-label="Direction à suivre">
+        <g id="dial">
+          <circle r="92" fill="none" stroke="var(--line)" stroke-width="3"/>
+          <g id="ticks"></g>
+          <text y="-66" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="18" font-weight="700" fill="var(--alert)">N</text>
+          <g id="needle"><path d="M0 -80 L18 10 L0 0 L-18 10 Z" fill="var(--brass)"/><path d="M0 0 L18 10 L0 40 L-18 10 Z" fill="var(--line)"/></g>
+        </g>
+        <path d="M0 -100 L7 -88 L-7 -88 Z" fill="var(--ink)" id="topMark"/>
+      </svg>
+      <div style="display:grid;gap:4px;min-width:0">
+        <div class="big" id="gDist">–</div>
+        <div class="muted" id="gDistLbl">jusqu'à la voiture</div>
+        <div class="say" id="gSay">Recherche du GPS…</div>
+        <div class="muted" id="gCap"></div>
+      </div>
+    </div>
+    <div class="notice" id="gNote" hidden></div>
+    <button id="btnCompass" hidden>Activer la boussole</button>
+    <p class="muted" id="modeHelp"></p>
+    <div class="row">
+      <button id="btnResume">Reprendre la chasse</button>
+      <button id="btnEndAsk" class="danger">Terminer la sortie</button>
+    </div>
+  </section>
+
+  <section class="panel" id="vMap" hidden>
+    <span class="lbl">Carte</span>
+    <div id="map" aria-label="Carte avec ta trace et la voiture"></div>
+    <div class="row">
+      <button id="btnMe">Centrer sur moi</button>
+      <button id="btnFit">Voir toute la sortie</button>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--olive)"></i>Aller</span>
+      <span><i style="background:var(--brass)"></i>Retour</span>
+      <span><i style="background:var(--you)"></i>Toi</span>
+      <span><i style="background:var(--ink)"></i>Voiture</span>
+    </div>
+    <p class="muted">Hors réseau, la carte n'affiche que les zones déjà vues avec du réseau. Avant la sortie, parcours ton secteur chez toi en wifi, en relief et en satellite, à plusieurs niveaux de zoom. <span id="tileInfo"></span></p>
+  </section>
+
+  <section class="panel" id="vTools" hidden>
+    <span class="lbl">Position de la voiture</span>
+    <p class="coords" id="carCoords"></p>
+    <div class="row">
+      <button id="btnCopy">Copier les coordonnées</button>
+      <button id="btnGpx">Exporter la trace (GPX)</button>
+    </div>
+    <div class="row">
+      <a id="lnkApple" target="_blank" rel="noopener" style="flex:1 1 140px"><button style="width:100%">Ouvrir dans Plans</button></a>
+      <a id="lnkGoogle" target="_blank" rel="noopener" style="flex:1 1 140px"><button style="width:100%">Ouvrir dans Google Maps</button></a>
+    </div>
+    <p class="muted">Plans et Google Maps ont besoin du réseau. Le guidage de l'appli fonctionne sans.</p>
+    <div class="confirm" id="endConfirm" hidden>
+      <p><strong>Effacer la voiture et toute la trace ?</strong> Exporte le GPX avant si tu veux la garder.</p>
+      <div class="row"><button id="btnEndNo">Annuler</button><button id="btnEndYes" class="danger">Oui, tout effacer</button></div>
+    </div>
+    <button class="danger" id="btnResetAsk">Nouvelle sortie (tout effacer)</button>
+  </section>
+
+  <p class="muted" style="font-size:.85rem">Garde l'appli ouverte au premier plan : l'iPhone coupe le GPS des pages web quand l'écran se verrouille. Ce guidage complète une vraie boussole et une batterie chargée, il ne les remplace pas.</p>
+</div>
+
+<script>
+"use strict";
+/* ---------- Géométrie ---------- */
+const R=6371008.8, rad=d=>d*Math.PI/180, deg=r=>r*180/Math.PI;
+function dist(a,b){const dLa=rad(b.lat-a.lat),dLo=rad(b.lon-a.lon);const s=Math.sin(dLa/2)**2+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLo/2)**2;return 2*R*Math.asin(Math.min(1,Math.sqrt(s)))}
+function bearing(a,b){const y=Math.sin(rad(b.lon-a.lon))*Math.cos(rad(b.lat));const x=Math.cos(rad(a.lat))*Math.sin(rad(b.lat))-Math.sin(rad(a.lat))*Math.cos(rad(b.lat))*Math.cos(rad(b.lon-a.lon));return (deg(Math.atan2(y,x))+360)%360}
+const CARD=["N","NE","E","SE","S","SO","O","NO"], card=b=>CARD[Math.round(b/45)%8];
+const fmtD=m=>m==null?"–":m<1000?`${Math.round(m)} m`:`${(m/1000).toLocaleString("fr-FR",{maximumFractionDigits:2,minimumFractionDigits:1})} km`;
+const fmtT=ms=>{const m=Math.floor(ms/60000);return m<60?`${m} min`:`${Math.floor(m/60)} h ${String(m%60).padStart(2,"0")}`};
+
+/* ---------- État et stockage ---------- */
+const KEY="filAriane.v1", DEMO=location.search.includes("demo");
+let S={car:null,track:[],rec:false,ret:null,hidden:null};
+let pos=null, watchId=null, compass=null, compassT=0, wake=null, calib=null, cum=[], cumLen=0;
+function load(){try{const s=JSON.parse(localStorage.getItem(KEY)||"null");if(s)S=Object.assign(S,s)}catch(e){}}
+function save(){if(DEMO)return;try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){note("Mémoire du téléphone pleine : exporte le GPX puis démarre une nouvelle sortie.")}}
+const $=id=>document.getElementById(id);
+function note(t){const n=$("gapNotice");n.innerHTML=t;n.hidden=!t}
+
+/* ---------- GPS ---------- */
+function startWatch(){
+  if(watchId!=null||DEMO)return;
+  if(!("geolocation" in navigator)){chip("Pas de GPS","bad");return}
+  watchId=navigator.geolocation.watchPosition(onFix,onErr,{enableHighAccuracy:true,maximumAge:0,timeout:30000});
+  chip("Recherche GPS…","");
+}
+function onErr(e){
+  if(e.code===1){chip("GPS refusé","bad");note("<strong>Accès à la position refusé.</strong> Sur iPhone : Réglages → Confidentialité → Service de localisation → Safari (ou l'appli) → « Lorsque l'app est active » et « Position exacte ».")}
+  else chip("Signal GPS faible","bad");
+}
+function chip(t,c){const el=$("gpsChip");el.textContent=t;el.className="chip "+(c||"")}
+function onFix(p){
+  const c=p.coords;
+  pos={lat:c.latitude,lon:c.longitude,acc:c.accuracy,alt:c.altitude,head:c.heading,speed:c.speed,t:p.timestamp};
+  chip(`GPS ±${Math.round(c.accuracy)} m`,c.accuracy<=25?"ok":c.accuracy>60?"bad":"");
+  if(map&&!S.car&&!fitted){map.setView(ll(pos),15);fitted=true}
+  if(calib){calib.fixes.push(pos);calibStep();return}
+  if(S.car&&pos.acc<=50){
+    const pt={lat:pos.lat,lon:pos.lon,t:pos.t,alt:pos.alt};
+    if(S.ret){const tr=S.ret.trace,l=tr[tr.length-1];if(!l||dist(l,pt)>=10){tr.push(pt);save()}}
+    else if(S.rec){const l=S.track[S.track.length-1];if(!l||dist(l,pt)>=Math.max(8,pos.acc*.4)){S.track.push(pt);save()}}
+  }
+  render();
+}
+
+/* ---------- Calage de la voiture (moyenne des meilleures mesures) ---------- */
+$("btnCar").onclick=()=>{calib={fixes:[],t0:Date.now()};$("btnCar").disabled=true;$("calib").hidden=false;$("calib").textContent="Calage GPS… reste immobile quelques secondes.";startWatch();askWake();calib.timer=setInterval(calibStep,1000)};
+function calibStep(){
+  if(!calib)return;
+  const el=Date.now()-calib.t0, f=calib.fixes;
+  if(!f.length){if(el>30000){$("calib").textContent="Toujours pas de signal. Éloigne-toi des arbres ou des falaises et réessaie.";$("btnCar").disabled=false;clearInterval(calib.timer);calib=null}return}
+  const best=Math.min(...f.map(x=>x.acc));
+  $("calib").textContent=`Calage GPS… précision ±${Math.round(best)} m (${f.length} mesure${f.length>1?"s":""})`;
+  if(!((el>=6000&&best<=30)||el>=20000))return;
+  const g=f.filter(x=>x.acc<=best*1.5);let W=0,la=0,lo=0,al=0,aw=0;
+  for(const x of g){const w=1/(x.acc*x.acc);W+=w;la+=x.lat*w;lo+=x.lon*w;if(x.alt!=null){al+=x.alt*w;aw+=w}}
+  S.car={lat:la/W,lon:lo/W,alt:aw?al/aw:null,acc:best,t:Date.now()};
+  S.track=[{lat:S.car.lat,lon:S.car.lon,t:S.car.t,alt:S.car.alt}];S.rec=true;S.ret=null;
+  clearInterval(calib.timer);calib=null;$("btnCar").disabled=false;$("calib").hidden=true;
+  save();render();
+}
+
+/* ---------- Boussole ---------- */
+function onOrient(e){
+  let h=null;
+  if(typeof e.webkitCompassHeading==="number")h=e.webkitCompassHeading;
+  else if(e.absolute&&e.alpha!=null)h=(360-e.alpha)%360;
+  if(h==null)return;
+  const so=(screen.orientation&&screen.orientation.angle)||window.orientation||0;
+  compass=(h+so+360)%360;compassT=Date.now();$("btnCompass").hidden=true;
+  if(S.ret)renderGuide();
+}
+function listenCompass(){addEventListener("deviceorientationabsolute",onOrient);addEventListener("deviceorientation",onOrient)}
+const needPerm=typeof DeviceOrientationEvent!=="undefined"&&typeof DeviceOrientationEvent.requestPermission==="function";
+$("btnCompass").onclick=async()=>{try{const r=await DeviceOrientationEvent.requestPermission();if(r==="granted")listenCompass();else $("gCap").textContent="Boussole refusée : utilise le cap en degrés."}catch(e){}};
+if(!needPerm)listenCompass();
+function heading(){
+  if(compass!=null&&Date.now()-compassT<3000)return {h:compass,src:"boussole"};
+  if(pos&&pos.head!=null&&!isNaN(pos.head)&&pos.speed>0.7)return {h:pos.head,src:"marche"};
+  return null;
+}
+
+/* ---------- Écran allumé ---------- */
+async function askWake(){
+  try{if("wakeLock" in navigator&&!wake){wake=await navigator.wakeLock.request("screen");$("wakeChip").hidden=false;wake.addEventListener("release",()=>{wake=null;$("wakeChip").hidden=true})}}catch(e){}
+}
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden){S.hidden=Date.now();save()}
+  else{
+    if(S.hidden&&S.car&&(S.rec||S.ret)){const gap=Date.now()-S.hidden;if(gap>90000)note(`<strong>Trace interrompue ${fmtT(gap)}.</strong> L'appli n'a pas suivi ta position pendant que l'écran était verrouillé : la trace relie directement les deux points.`)}
+    S.hidden=null;save();if(S.car)askWake();
+  }
+});
+
+/* ---------- Guidage retour ---------- */
+function cumulative(T){
+  if(cumLen===T.length&&cum.length)return cum;
+  cum=[0];for(let i=1;i<T.length;i++)cum[i]=cum[i-1]+dist(T[i-1],T[i]);cumLen=T.length;return cum;
+}
+function guide(){
+  if(!pos||!S.car)return null;
+  const direct={d:dist(pos,S.car),b:bearing(pos,S.car)};
+  const T=S.track.slice(0,S.ret.idx+1);
+  if(S.ret.mode==="direct"||T.length<3)return {target:S.car,d:direct.d,b:direct.b,remain:direct.d,off:0,direct};
+  const C=cumulative(T);
+  const k=Math.cos(rad(pos.lat))*111320;let n=0,best=Infinity;
+  for(let i=0;i<T.length;i++){const dx=(T[i].lon-pos.lon)*k,dy=(T[i].lat-pos.lat)*110540,d=dx*dx+dy*dy;if(d<best){best=d;n=i}}
+  const off=Math.sqrt(best);let target;
+  if(off>50)target=T[n];
+  else{const goal=C[n]-40;let j=n;while(j>0&&C[j]>goal)j--;target=T[j]}
+  return {target,d:dist(pos,target),b:bearing(pos,target),remain:off+C[n],off,direct};
+}
+function turnWord(rel){
+  if(rel<20||rel>340)return "Tout droit";
+  if(rel<60)return "Légèrement à droite";
+  if(rel<130)return "À droite";
+  if(rel<=230)return "Fais demi-tour";
+  if(rel<=300)return "À gauche";
+  return "Légèrement à gauche";
+}
+function renderGuide(){
+  const g=guide(), H=heading();
+  $("dial").setAttribute("transform",`rotate(${H?-H.h:0})`);
+  $("topMark").style.display=H?"":"none";
+  if(!g){$("gDist").textContent="–";$("gSay").textContent="Recherche du GPS…";$("gCap").textContent="";return}
+  $("needle").style.transform=`rotate(${g.b}deg)`;
+  const arrived=g.direct.d<=Math.max(15,Math.min(pos.acc,30));
+  $("gDist").textContent=arrived?"Arrivé":fmtD(g.remain);
+  $("gDistLbl").textContent=arrived?"la voiture est à portée de vue":S.ret.mode==="path"?"par ton chemin":"à vol d'oiseau";
+  if(arrived){$("gSay").textContent="Tu es à la voiture.";$("gCap").textContent=""}
+  else{
+    $("gSay").textContent=H?turnWord((g.b-H.h+360)%360):`Cap ${Math.round(g.b)}° ${card(g.b)}`;
+    $("gCap").textContent=H?`Cap ${Math.round(g.b)}° ${card(g.b)} · prochain repère à ${fmtD(g.d)} · orientation par la ${H.src}`
+      :`Prochain repère à ${fmtD(g.d)}. Nord en haut : oriente le téléphone avec le soleil ou une boussole.`;
+  }
+  const n=$("gNote");
+  if(!arrived&&S.ret.mode==="path"&&g.off>50){n.hidden=false;n.className="notice alert";n.innerHTML=`<strong>Tu es à ${fmtD(g.off)} de ton chemin.</strong> La flèche te ramène d'abord sur ta trace.`}
+  else if(!arrived&&S.ret.mode==="direct"){n.hidden=false;n.className="notice";n.textContent="En ligne droite, l'appli ignore le relief : ravin, falaise ou oued peuvent couper la route. En cas de doute, repasse sur « Par mon chemin »."}
+  else n.hidden=true;
+  $("btnCompass").hidden=!(needPerm&&(compass==null||Date.now()-compassT>3000));
+}
+
+/* ---------- Carte (Leaflet : relief OpenTopoMap / satellite Esri) ---------- */
+let map=null,lyr={},follow=false,fitted=false;
+const ll=p=>[p.lat,p.lon];
+function initMap(){
+  if(map||!window.L)return;
+  const cs=getComputedStyle(document.documentElement),col=n=>cs.getPropertyValue(n).trim();
+  map=L.map("map",{zoomControl:true,attributionControl:true}).setView([31.8,-7.1],6);
+  const topo=L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",{subdomains:"abc",maxZoom:17,crossOrigin:"anonymous",
+    attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, SRTM · © <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)'});
+  const sat=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,maxNativeZoom:18,crossOrigin:"anonymous",
+    attribution:"Imagerie © Esri, Maxar, Earthstar Geographics"});
+  let base="topo";try{base=localStorage.getItem("filAriane.layer")||"topo"}catch(e){}
+  (base==="sat"?sat:topo).addTo(map);
+  L.control.layers({"Relief":topo,"Satellite":sat},null,{position:"topright",collapsed:false}).addTo(map);
+  L.control.scale({imperial:false,position:"topleft"}).addTo(map);
+  map.on("baselayerchange",e=>{try{localStorage.setItem("filAriane.layer",e.layer===sat?"sat":"topo")}catch(_){}});
+  map.on("dragstart",()=>{follow=false});
+  lyr.track=L.polyline([],{color:col("--olive"),weight:5,opacity:.95}).addTo(map);
+  lyr.ret=L.polyline([],{color:col("--brass"),weight:4,dashArray:"8 8"}).addTo(map);
+  lyr.acc=L.circle([0,0],{radius:1,color:col("--you"),weight:1,fillOpacity:.15,interactive:false});
+  lyr.me=L.circleMarker([0,0],{radius:8,color:"#ffffff",weight:3,fillColor:col("--you"),fillOpacity:1});
+  lyr.target=L.circleMarker([0,0],{radius:10,color:col("--brass"),weight:3,fill:false});
+  lyr.car=L.marker([0,0],{icon:L.divIcon({className:"carIcon",html:"P",iconSize:[24,24],iconAnchor:[12,12]}),title:"Voiture"});
+}
+const show=(l,on)=>{if(on&&!map.hasLayer(l))l.addTo(map);if(!on&&map.hasLayer(l))l.remove()};
+function fitAll(){
+  const pts=[...S.track,...(S.ret?S.ret.trace:[])];if(pos)pts.push(pos);if(S.car)pts.push(S.car);
+  if(!pts.length)return;
+  if(pts.length===1)map.setView(ll(pts[0]),16);else map.fitBounds(L.latLngBounds(pts.map(ll)).pad(.15),{maxZoom:17});
+}
+function drawMap(){
+  if($("vMap").hidden)return;
+  initMap();if(!map)return;
+  map.invalidateSize();
+  lyr.track.setLatLngs(S.track.map(ll));
+  lyr.ret.setLatLngs(S.ret?[S.track[S.ret.idx]||S.car,...S.ret.trace].map(ll):[]);
+  show(lyr.car,!!S.car);if(S.car)lyr.car.setLatLng(ll(S.car));
+  show(lyr.me,!!pos);show(lyr.acc,!!pos);
+  if(pos){lyr.me.setLatLng(ll(pos));lyr.acc.setLatLng(ll(pos)).setRadius(pos.acc)}
+  let tg=null;if(S.ret&&pos){const g=guide();if(g&&g.target!==S.car)tg=g.target}
+  show(lyr.target,!!tg);if(tg)lyr.target.setLatLng(ll(tg));
+  if(!fitted&&(S.car||pos)){fitAll();fitted=true}
+  else if(follow&&pos)map.panTo(ll(pos),{animate:false});
+}
+$("btnMe").onclick=()=>{if(!pos){startWatch();return}follow=true;map.setView(ll(pos),Math.max(map.getZoom(),15))};
+$("btnFit").onclick=()=>{follow=false;fitAll()};
+async function tileCount(){try{if(!("caches" in window))return;const k=await(await caches.open("ariane-tiles")).keys();$("tileInfo").textContent=k.length?`${k.length} morceaux de carte gardés en mémoire.`:""}catch(e){}}
+
+/* ---------- Rendu général ---------- */
+function render(){
+  const has=!!S.car;
+  $("vSetup").hidden=has;$("vTrack").hidden=!has||!!S.ret;$("vReturn").hidden=!S.ret;$("vMap").hidden=false;$("vTools").hidden=!has;
+  if(!has){drawMap();return}
+  const walk=cumulative(S.track)[S.track.length-1]||0;
+  $("sWalk").textContent=fmtD(walk);
+  $("sTime").textContent=fmtT(Date.now()-S.car.t);
+  if(pos){const d=dist(pos,S.car),b=bearing(pos,S.car);$("sCar").textContent=fmtD(d);$("carDir").textContent=`Voiture au ${card(b)} (${Math.round(b)}°)`;
+    if(pos.alt!=null&&S.car.alt!=null){const dz=Math.round(pos.alt-S.car.alt);$("sAlt").textContent=dz===0?"même niveau":`${dz>0?"+":""}${dz} m`}}
+  $("recLbl").textContent=S.rec?"Enregistrement en cours":"En pause";
+  $("btnPause").textContent=S.rec?"Mettre en pause":"Reprendre l'enregistrement";
+  const c=`${S.car.lat.toFixed(6)}, ${S.car.lon.toFixed(6)}`;
+  $("carCoords").textContent=`${c}  (±${Math.round(S.car.acc)} m${S.car.alt!=null?`, alt. ${Math.round(S.car.alt)} m`:""})`;
+  $("lnkApple").href=`https://maps.apple.com/?daddr=${S.car.lat},${S.car.lon}&dirflg=w`;
+  $("lnkGoogle").href=`https://www.google.com/maps/dir/?api=1&destination=${S.car.lat},${S.car.lon}&travelmode=walking`;
+  if(S.ret){
+    document.querySelectorAll("#modeSeg button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.m===S.ret.mode));
+    $("modeHelp").textContent=S.ret.mode==="path"?"Par mon chemin : tu repasses là où tu es déjà passé. C'est le plus sûr en montagne.":"En ligne droite : direction et distance à vol d'oiseau, utile en terrain dégagé.";
+    renderGuide();
+  }
+  drawMap();
+}
+
+/* ---------- Actions ---------- */
+$("btnReturn").onclick=()=>{S.ret={idx:S.track.length-1,mode:"path",trace:[]};if(pos)S.ret.trace.push({lat:pos.lat,lon:pos.lon,t:pos.t,alt:pos.alt});save();askWake();render();window.scrollTo({top:0,behavior:"smooth"})};
+$("btnResume").onclick=()=>{if(S.ret){S.track.push(...S.ret.trace);S.ret=null;S.rec=true;save();render()}};
+$("modeSeg").onclick=e=>{const b=e.target.closest("button");if(!b||!S.ret)return;S.ret.mode=b.dataset.m;save();render()};
+$("btnPause").onclick=()=>{S.rec=!S.rec;save();render()};
+const ask=()=>{$("endConfirm").hidden=false;$("endConfirm").scrollIntoView({behavior:"smooth",block:"center"})};
+$("btnEndAsk").onclick=ask;$("btnResetAsk").onclick=ask;
+$("btnEndNo").onclick=()=>{$("endConfirm").hidden=true};
+$("btnEndYes").onclick=()=>{S={car:null,track:[],rec:false,ret:null,hidden:null};cum=[];cumLen=0;fitted=false;save();$("endConfirm").hidden=true;note("");render()};
+$("btnCopy").onclick=async()=>{const t=`${S.car.lat.toFixed(6)}, ${S.car.lon.toFixed(6)}`;try{await navigator.clipboard.writeText(t);$("btnCopy").textContent="Copié"}catch(e){const r=document.createRange();r.selectNodeContents($("carCoords"));getSelection().removeAllRanges();getSelection().addRange(r);$("btnCopy").textContent="Sélectionné, copie-le"}setTimeout(()=>$("btnCopy").textContent="Copier les coordonnées",2500)};
+$("btnGpx").onclick=async()=>{
+  const pt=p=>`<trkpt lat="${p.lat.toFixed(7)}" lon="${p.lon.toFixed(7)}">${p.alt!=null?`<ele>${p.alt.toFixed(1)}</ele>`:""}<time>${new Date(p.t).toISOString()}</time></trkpt>`;
+  const all=[...S.track,...(S.ret?S.ret.trace:[])];
+  const xml=`<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Fil d'Ariane" xmlns="http://www.topografix.com/GPX/1/1">\n<wpt lat="${S.car.lat.toFixed(7)}" lon="${S.car.lon.toFixed(7)}"><name>Voiture</name></wpt>\n<trk><name>Sortie du ${new Date(S.car.t).toLocaleDateString("fr-FR")}</name><trkseg>\n${all.map(pt).join("\n")}\n</trkseg></trk>\n</gpx>\n`;
+  const name=`sortie-${new Date(S.car.t).toISOString().slice(0,10)}.gpx`,file=new File([xml],name,{type:"application/gpx+xml"});
+  try{if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:name});return}}catch(e){if(e.name==="AbortError")return}
+  const a=document.createElement("a");a.href=URL.createObjectURL(file);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);
+};
+
+/* ---------- Tics de la rose ---------- */
+(function(){let g="";for(let i=0;i<360;i+=30){const a=rad(i),r1=i%90?84:78;g+=`<line x1="${Math.sin(a)*r1}" y1="${-Math.cos(a)*r1}" x2="${Math.sin(a)*92}" y2="${-Math.cos(a)*92}" stroke="var(--muted)" stroke-width="${i%90?2:3}"/>`}$("ticks").innerHTML=g})();
+
+/* ---------- Mode démo (?demo) : sortie fictive pour essayer l'appli ---------- */
+function demo(){
+  const car={lat:33.52280,lon:-5.11060,alt:1650,acc:6,t:Date.now()-2.3*3600e3};
+  S={car,track:[{...car}],rec:true,ret:null,hidden:null};
+  let lat=car.lat,lon=car.lon,alt=car.alt,hd=40,t=car.t;
+  for(let i=0;i<140;i++){hd+=Math.sin(i/9)*14+(i>70?-6:3);lat+=Math.cos(rad(hd))*14/110540;lon+=Math.sin(rad(hd))*14/(111320*Math.cos(rad(lat)));alt+=Math.sin(i/15)*3+0.8;t+=55e3;S.track.push({lat,lon,alt,t})}
+  S.ret={idx:S.track.length-1,mode:"path",trace:[]};
+  const last=S.track[S.track.length-1];
+  pos={lat:last.lat+0.00012,lon:last.lon-0.0004,acc:9,alt:last.alt,head:null,speed:0,t:Date.now()};
+  S.ret.trace.push({...last},{lat:pos.lat,lon:pos.lon,t:pos.t,alt:pos.alt});
+  chip("Démo · GPS fictif","");
+}
+
+/* ---------- Démarrage ---------- */
+if(DEMO)demo();else{load();if(S.car){startWatch();askWake()}}
+render();
+setInterval(()=>{if(S.car)render();tileCount()},30000);tileCount();
+let rz;addEventListener("resize",()=>{clearTimeout(rz);rz=setTimeout(drawMap,120)});
+if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+</body>
+</html>
